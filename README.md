@@ -1,5 +1,5 @@
 <p align="center">
-  <h1 align="center">⚡ Portkey vs Bedrock Latency Benchmark</h1>
+  <h1 align="center">Portkey vs Bedrock Latency Benchmark</h1>
   <p align="center">
     <strong>Measure the real-world latency overhead of routing requests through Portkey</strong>
   </p>
@@ -13,23 +13,7 @@
 
 ---
 
-## What This Does
-
-This benchmark tool provides **accurate, production-grade latency comparisons** between:
-
-| Direct Bedrock | vs | Through Portkey |
-|:---:|:---:|:---:|
-| Your App → AWS Bedrock | | Your App → Portkey → AWS Bedrock |
-
-**Key Metrics Measured:**
-- Round-trip latency (avg, median, P95, P99)
-- Success rates
-- Request throughput
-- Network vs inference time breakdown
-
----
-
-## 🚀 Quick Start (2 minutes)
+## Quick Start
 
 ### Prerequisites
 
@@ -47,15 +31,56 @@ cp config.example.json config.json
 
 ### Step 2: Add Your Credentials
 
-Edit `config.json` with your API keys:
+Open `config.json` and edit these fields:
 
 ```json
 {
-  "bedrockBearerToken": "YOUR_AWS_BEARER_TOKEN",
-  "portkeyApiKey": "YOUR_PORTKEY_API_KEY",
-  "portkeyProviderSlug": "@your-virtual-key"
+  "amazonRegion": "us-east-1",
+  "bedrockBearerToken": "...",
+  "portkeyApiKey": "...",
+  "portkeyProviderSlug": "@your-bedrock-slug"
 }
 ```
+
+<details>
+<summary><strong>AWS Bedrock Bearer Token</strong></summary>
+
+This tool uses HTTP Bearer auth (not IAM access keys).
+
+**From AWS SSO Portal:**
+1. Log into your organization's AWS SSO
+2. Select your Bedrock-enabled account
+3. Choose "Command line or programmatic access"
+4. Copy the Bearer token
+
+**From AWS CLI:**
+```bash
+aws sts get-session-token --duration-seconds 3600
+```
+
+> Set `amazonRegion` to match where your Bedrock model is deployed (e.g., `us-east-1`, `us-west-2`)
+
+</details>
+
+<details>
+<summary><strong>Portkey API Key</strong></summary>
+
+1. Log in to [app.portkey.ai](https://app.portkey.ai/)
+2. Click **API Keys** in the left sidebar
+3. Copy your API key
+
+</details>
+
+<details>
+<summary><strong>Provider Slug</strong></summary>
+
+1. Log in to [app.portkey.ai](https://app.portkey.ai/)
+2. Go to **Models** in the left sidebar
+3. You'll see a list of providers — copy the slug for the one you are using (e.g., `@bedrock-prod`)
+
+</details>
+
+---
 
 ### Step 3: Run
 
@@ -63,165 +88,139 @@ Edit `config.json` with your API keys:
 npm start
 ```
 
-That's it! Results will display in your terminal and save to `results/`.
+---
+
+## Sample Output
+
+```
+AGGREGATED PERFORMANCE COMPARISON:
+┌─────────────────────┬──────────────┬──────────────┬──────────────┐
+│ Metric              │ Bedrock      │ Portkey      │ Difference   │
+├─────────────────────┼──────────────┼──────────────┼──────────────┤
+│ Avg Total Time      │  1104.71ms   │  1197.87ms   │   +93.16ms   │
+│ Median Time         │   949.00ms   │   974.00ms   │   +25.00ms   │
+│ P95 Time            │  1999.95ms   │  2276.00ms   │  +276.05ms   │
+│ P99 Time            │  2487.62ms   │  2624.08ms   │  +136.46ms   │
+│ Success Rate        │      96.0%   │      89.0%   │     -7.0%    │
+└─────────────────────┴──────────────┴──────────────┴──────────────┘
+
+KEY INSIGHTS:
+• Portkey adds an average of 93.16ms latency (8.4% overhead)
+• Median overhead: 25.00ms
+```
+
+Results are saved to `results/benchmark_results_<timestamp>.json`.
 
 ---
 
-## ⚙️ Configuration Reference
+## Default Configuration
+
+The benchmark comes pre-configured with these defaults:
+
+| Setting | Default Value |
+|---------|---------------|
+| Model | `us.anthropic.claude-3-5-sonnet-20241022-v2:0` |
+| Mode | `comparison` (Bedrock vs Portkey) |
+| Prompt | `"What is the capital of France?"` |
+| Max Tokens | `100` |
+| Temperature | `0.7` |
+| Concurrency | `2` workers |
+| Max Requests | `3` per iteration |
+| Iterations | `2` |
+
+### Changing Models
+
+To use a different model, update `bedrockModelId` and `model` in `config.json`:
+
+```json
+{
+  "bedrockModelId": "us.anthropic.claude-3-haiku-20240307-v1:0",
+  "model": "us.anthropic.claude-3-haiku-20240307-v1:0"
+}
+```
+
+---
+
+## Configuration Reference
 
 <details>
-<summary><strong>📋 Full Configuration Options</strong> (click to expand)</summary>
+<summary><strong>All Options</strong></summary>
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| **`mode`** | string | `"comparison"` | `"comparison"` (Bedrock vs Portkey) or `"loadtest"` (Portkey only) |
-| **`prompt`** | string | — | The prompt to send to the model |
-| **`maxTokens`** | number | `100` | Maximum tokens in response |
-| **`temperature`** | number | `0.7` | Model temperature |
-| **`concurrency`** | number | `2` | Number of parallel request workers |
-| **`maxRequests`** | number | `30` | Total requests before stopping |
-| **`testDuration`** | number | `60` | Maximum test duration (seconds) |
-| **`iterations`** | number | `10` | Number of test runs to average |
+| `mode` | string | `"comparison"` | `"comparison"` (Bedrock vs Portkey) or `"loadtest"` (Portkey only) |
+| `prompt` | string | — | The prompt to send to the model |
+| `maxTokens` | number | `100` | Maximum tokens in response |
+| `temperature` | number | `0.7` | Model temperature |
+| `concurrency` | number | `2` | Number of parallel request workers |
+| `maxRequests` | number | `3` | Total requests per iteration |
+| `testDuration` | number | `60` | Maximum test duration (seconds) |
+| `iterations` | number | `2` | Number of test runs to average |
 
 </details>
 
 <details>
-<summary><strong>🔐 Required Credentials</strong> (click to expand)</summary>
+<summary><strong>Credentials</strong></summary>
 
 | Credential | Required For | Description |
 |------------|--------------|-------------|
-| **`bedrockBearerToken`** | `comparison` mode | AWS Bearer token with Bedrock invoke permissions |
-| **`portkeyApiKey`** | Both modes | Your Portkey API key |
-| **`amazonRegion`** | Both modes | AWS region (e.g., `us-east-1`) |
-| **`bedrockModelId`** | Both modes | Model ID (e.g., `us.anthropic.claude-3-5-sonnet-20241022-v2:0`) |
-| **`portkeyProviderSlug`** | Optional | Virtual key slug (e.g., `@bedrock-prod`) for routing |
-| **`portkeyBaseURL`** | Optional | Defaults to `https://api.portkey.ai/v1` |
+| `bedrockBearerToken` | `comparison` mode | AWS Bearer token with Bedrock invoke permissions |
+| `portkeyApiKey` | Both modes | Your Portkey API key |
+| `amazonRegion` | Both modes | AWS region (e.g., `us-east-1`) |
+| `bedrockModelId` | Both modes | Model ID for Bedrock |
+| `portkeyProviderSlug` | Both modes | Provider slug (e.g., `@bedrock-prod`) |
 
 </details>
 
 ---
 
-## 🔑 Getting Your API Keys
-
-<details>
-<summary><strong>Portkey API Key</strong></summary>
-
-1. Log in to the [Portkey Dashboard](https://app.portkey.ai/)
-2. Navigate to **Settings** → **API Keys** (bottom-left sidebar)
-3. Copy your API key
-
-</details>
-
-<details>
-<summary><strong>AWS Bedrock Bearer Token</strong></summary>
-
-This tool uses raw HTTP requests with Bearer token authentication.
-
-**Option A: AWS SSO**
-- Obtain from your organization's AWS SSO portal
-
-**Option B: AWS CLI Session Token**
-```bash
-aws sts get-session-token --duration-seconds 3600
-```
-
-> ⚠️ Ensure your token has `bedrock:InvokeModel` permission for the model you're testing.
-
-</details>
-
-<details>
-<summary><strong>Portkey Virtual Keys (Provider Slug)</strong></summary>
-
-Virtual keys let you store provider credentials in Portkey securely.
-
-1. Go to [Portkey Dashboard](https://app.portkey.ai/) → **Virtual Keys**
-2. Create a new key for AWS Bedrock
-3. Copy the slug (e.g., `@bedrock-prod`)
-4. Add to config: `"portkeyProviderSlug": "@bedrock-prod"`
-
-This routes requests through your stored Bedrock credentials.
-
-</details>
-
----
-
-## 📊 Understanding the Output
-
-### Real-Time Progress
+## How It Works
 
 ```
-📡 Worker 1 - Request 5 starting...
-📊 Worker 1 - Request 5 completed in 450ms | Bedrock: ✅ 420ms | Portkey: ✅ 440ms
-```
-
-### Final Summary Report
-
-```
-📈 AGGREGATED PERFORMANCE COMPARISON:
-┌─────────────────────┬──────────────┬──────────────┬─────────────┐
-│ Metric              │ Bedrock      │ Portkey      │ Difference  │
-├─────────────────────┼──────────────┼──────────────┼─────────────┤
-│ Avg Total Time      │ 420.50ms     │ 435.20ms     │ +14.70ms    │
-│ Median Time         │ 415.00ms     │ 428.00ms     │ +13.00ms    │
-│ P95 Time            │ 520.00ms     │ 535.00ms     │ +15.00ms    │
-│ P99 Time            │ 680.00ms     │ 695.00ms     │ +15.00ms    │
-│ Success Rate        │ 100.0%       │ 100.0%       │ +0.0%       │
-└─────────────────────┴──────────────┴──────────────┴─────────────┘
-
-🎯 KEY INSIGHTS:
-• Portkey adds an average of 14.70ms latency (3.5% overhead)
-• Median overhead: 13.00ms
-• 100% success rate for both providers
-```
-
-### JSON Artifacts
-
-Detailed results are automatically saved to `results/`:
-```
-results/benchmark_results_2024-02-04T12-00-00.json
+1. PREFLIGHT    Validate credentials, test connectivity
+       ↓
+2. WARMUP       5 requests per provider (establish connections)
+       ↓
+3. BENCHMARK    Concurrent workers fire parallel requests
+       ↓         - Randomized order eliminates bias
+       ↓         - Measures total round-trip time
+       ↓
+4. AGGREGATE    Calculate avg, median, P95, P99
+       ↓
+5. REPORT       Console summary + JSON artifact
 ```
 
 ---
 
-## 🧠 How It Works
+## Understanding Overhead
+
+The latency overhead represents round-trip network latency through the proxy:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        BENCHMARK FLOW                           │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  1. PREFLIGHT    Validate credentials, test connectivity       │
-│         ↓                                                       │
-│  2. WARMUP       5 requests per provider (establish connections)│
-│         ↓                                                       │
-│  3. BENCHMARK    Concurrent workers fire parallel requests      │
-│         ↓        - Randomized order eliminates bias             │
-│         ↓        - Measures total round-trip time               │
-│         ↓        - Extracts server processing time if available │
-│         ↓                                                       │
-│  4. AGGREGATE    Calculate avg, median, P95, P99 across all     │
-│         ↓        iterations                                     │
-│         ↓                                                       │
-│  5. REPORT       Console summary + JSON artifact                │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+Direct Bedrock:     Client → Bedrock → Client
+                           (1 hop each direction)
+
+Through Portkey:    Client → Portkey → Bedrock → Portkey → Client
+                           (2 hops each direction)
 ```
 
-**Why Parallel Requests?**
-- Eliminates "first request" bias from connection pooling
-- Mirrors real production traffic patterns
-- Provides fair comparison between providers
+**Typical overhead: ~50-150ms** depending on geographic distance and network conditions.
+
+### When Portkey Shows Lower Latency than Direct Bedrock 
+
+This can happen due to:
+- **Network variance** — With fewer iterations, jitter can skew results. Run 10+ iterations for accuracy.
+- **Connection reuse** — Portkey maintains persistent connections, reducing handshake overhead.
 
 ---
 
-## 🧪 Test Modes
+## Test Modes
 
-| Mode | What It Tests | Use Case |
-|------|---------------|----------|
-| `comparison` | Bedrock vs Portkey side-by-side | Measure Portkey overhead |
-| `loadtest` | Portkey only | Stress test your Portkey setup |
+| Mode | Description |
+|------|-------------|
+| `comparison` | Bedrock vs Portkey side-by-side |
+| `loadtest` | Portkey only (stress test) |
 
-Switch modes in `config.json`:
 ```json
 {
   "mode": "loadtest"
@@ -230,18 +229,14 @@ Switch modes in `config.json`:
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 benchmark-test/
 ├── benchmark.js         # Main benchmark script
 ├── config.example.json  # Template configuration
 ├── config.json          # Your configuration (gitignored)
-├── package.json         # Project metadata
 ├── results/             # Output directory (gitignored)
-│   └── .gitkeep
-├── .gitignore
-├── LICENSE
 └── README.md
 ```
 

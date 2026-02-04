@@ -140,7 +140,7 @@ class PortkeyBenchmark {
       }
 
       const requestBody = {
-        model: this.config.bedrockModelId || this.config.model || 'claude-3-sonnet-20240229',
+        model: this.config.model || this.config.bedrockModelId || 'claude-3-sonnet-20240229',
         messages,
         max_tokens: this.config.maxTokens || 100,
         temperature: this.config.temperature || 0.7
@@ -402,14 +402,6 @@ class PortkeyBenchmark {
         if (portkeyResult.success) {
           console.log(`✅ Portkey test successful (${portkeyResult.totalTime}ms)`);
 
-          // Check if we can extract OpenAI processing time from Portkey response
-          if (portkeyResult.openaiProcessingTime !== null) {
-            console.log(`✅ OpenAI processing time extracted via Portkey: ${portkeyResult.openaiProcessingTime}ms`);
-          } else {
-            console.log(`⚠️  OpenAI processing time not available in Portkey response headers`);
-            console.log(`   Network latency calculation will be limited`);
-          }
-
           testResults.portkey = portkeyResult;
         } else {
           console.log(`❌ Portkey test failed: ${portkeyResult.error}`);
@@ -455,35 +447,7 @@ class PortkeyBenchmark {
       throw new Error(`Some providers failed: ${failedProviders.join(', ')}. Aborting test...`);
     }
 
-    // Check if processing times are available for enabled providers (only important for comparison mode)
-    const mode = this.config.mode || 'comparison';
-    if (mode === 'comparison') {
-      const bedrockHasProcessingTime = bedrockSuccess && testResults.bedrock.openaiProcessingTime !== null;
-      const portkeyHasProcessingTime = portkeySuccess && testResults.portkey.openaiProcessingTime !== null;
 
-      if (this.shouldTestBedrock && this.shouldTestPortkey) {
-        // Both providers are enabled, both must have processing times for accurate comparison
-        if (!bedrockHasProcessingTime || !portkeyHasProcessingTime) {
-          const missingProviders = [];
-          if (!bedrockHasProcessingTime) missingProviders.push('Bedrock');
-          if (!portkeyHasProcessingTime) missingProviders.push('Portkey');
-
-          console.log(`⚠️  Processing time extraction failed for ${missingProviders.join(' and ')}. ` +
-            'Comparison mode will be less accurate without processing time headers.');
-        }
-      }
-    } else {
-      // For load testing modes, processing time is helpful but not critical
-      const enabledProvider = this.shouldTestBedrock ? 'Bedrock' : 'Portkey';
-      const hasProcessingTime = this.shouldTestBedrock ?
-        (bedrockSuccess && testResults.bedrock.openaiProcessingTime !== null) :
-        (portkeySuccess && testResults.portkey.openaiProcessingTime !== null);
-
-      if (!hasProcessingTime) {
-        console.log(`⚠️  Processing time extraction failed for ${enabledProvider}. ` +
-          'Network latency calculations will be limited.');
-      }
-    }
 
     console.log('✅ Preflight test completed successfully!\n');
 
@@ -796,6 +760,26 @@ class PortkeyBenchmark {
     };
   }
 
+  // Helper functions for consistent table formatting
+  // Column width is 12 to match the 14-dash border (12 content + 2 for │ borders)
+  formatMs(value, width = 12) {
+    return `${value.toFixed(2)}ms`.padStart(width);
+  }
+
+  formatPct(value, width = 12) {
+    return `${value.toFixed(1)}%`.padStart(width);
+  }
+
+  formatDiffMs(value, width = 12) {
+    const sign = value >= 0 ? '+' : '';
+    return `${sign}${value.toFixed(2)}ms`.padStart(width);
+  }
+
+  formatDiffPct(value, width = 12) {
+    const sign = value >= 0 ? '+' : '';
+    return `${sign}${value.toFixed(1)}%`.padStart(width);
+  }
+
   generateIterationsReport(allIterationResults) {
     const iterations = this.config.iterations || 1;
 
@@ -843,7 +827,8 @@ class PortkeyBenchmark {
     console.log('├───────────┼──────────────┼──────────────┼──────────────┼──────────────┤');
 
     iterationStats.forEach(stat => {
-      console.log(`│    ${stat.iteration}      │ ${stat.bedrockStats.avgTotalTime.toFixed(2).padEnd(10)}ms │ ${stat.portkeyStats.avgTotalTime.toFixed(2).padEnd(10)}ms │ ${stat.overhead >= 0 ? '+' : ''}${stat.overhead.toFixed(2).padEnd(10)}ms │ ${stat.medianOverhead >= 0 ? '+' : ''}${stat.medianOverhead.toFixed(2).padEnd(10)}ms │`);
+      const iter = String(stat.iteration).padStart(4).padEnd(7);
+      console.log(`│ ${iter}   │ ${this.formatMs(stat.bedrockStats.avgTotalTime)} │ ${this.formatMs(stat.portkeyStats.avgTotalTime)} │ ${this.formatDiffMs(stat.overhead)} │ ${this.formatDiffMs(stat.medianOverhead)} │`);
     });
     console.log('└───────────┴──────────────┴──────────────┴──────────────┴──────────────┘');
 
@@ -865,15 +850,15 @@ class PortkeyBenchmark {
     const mode = this.config.mode || 'comparison';
     if (mode === 'comparison') {
       console.log('\n📈 AGGREGATED PERFORMANCE COMPARISON:');
-      console.log('┌─────────────────────┬──────────────┬──────────────┬─────────────┐');
-      console.log('│ Metric              │ Bedrock      │ Portkey      │ Difference  │');
-      console.log('├─────────────────────┼──────────────┼──────────────┼─────────────┤');
-      console.log(`│ Avg Total Time      │ ${aggregatedBedrockStats.avgTotalTime.toFixed(2).padEnd(10)}ms │ ${aggregatedPortkeyStats.avgTotalTime.toFixed(2).padEnd(10)}ms │ ${(aggregatedPortkeyStats.avgTotalTime - aggregatedBedrockStats.avgTotalTime >= 0 ? '+' : '')}${(aggregatedPortkeyStats.avgTotalTime - aggregatedBedrockStats.avgTotalTime).toFixed(2).padEnd(9)}ms │`);
-      console.log(`│ Median Time         │ ${aggregatedBedrockStats.medianTotalTime.toFixed(2).padEnd(10)}ms │ ${aggregatedPortkeyStats.medianTotalTime.toFixed(2).padEnd(10)}ms │ ${(aggregatedPortkeyStats.medianTotalTime - aggregatedBedrockStats.medianTotalTime >= 0 ? '+' : '')}${(aggregatedPortkeyStats.medianTotalTime - aggregatedBedrockStats.medianTotalTime).toFixed(2).padEnd(9)}ms │`);
-      console.log(`│ P95 Time            │ ${aggregatedBedrockStats.p95TotalTime.toFixed(2).padEnd(10)}ms │ ${aggregatedPortkeyStats.p95TotalTime.toFixed(2).padEnd(10)}ms │ ${(aggregatedPortkeyStats.p95TotalTime - aggregatedBedrockStats.p95TotalTime >= 0 ? '+' : '')}${(aggregatedPortkeyStats.p95TotalTime - aggregatedBedrockStats.p95TotalTime).toFixed(2).padEnd(9)}ms │`);
-      console.log(`│ P99 Time            │ ${aggregatedBedrockStats.p99TotalTime.toFixed(2).padEnd(10)}ms │ ${aggregatedPortkeyStats.p99TotalTime.toFixed(2).padEnd(10)}ms │ ${(aggregatedPortkeyStats.p99TotalTime - aggregatedBedrockStats.p99TotalTime >= 0 ? '+' : '')}${(aggregatedPortkeyStats.p99TotalTime - aggregatedBedrockStats.p99TotalTime).toFixed(2).padEnd(9)}ms │`);
-      console.log(`│ Success Rate        │ ${aggregatedBedrockStats.successRate.toFixed(1).padEnd(10)}%  │ ${aggregatedPortkeyStats.successRate.toFixed(1).padEnd(10)}%  │ ${(aggregatedPortkeyStats.successRate - aggregatedBedrockStats.successRate >= 0 ? '+' : '')}${(aggregatedPortkeyStats.successRate - aggregatedBedrockStats.successRate).toFixed(1).padEnd(9)}%  │`);
-      console.log('└─────────────────────┴──────────────┴──────────────┴─────────────┘');
+      console.log('┌─────────────────────┬──────────────┬──────────────┬──────────────┐');
+      console.log('│ Metric              │ Bedrock      │ Portkey      │ Difference   │');
+      console.log('├─────────────────────┼──────────────┼──────────────┼──────────────┤');
+      console.log(`│ Avg Total Time      │ ${this.formatMs(aggregatedBedrockStats.avgTotalTime)} │ ${this.formatMs(aggregatedPortkeyStats.avgTotalTime)} │ ${this.formatDiffMs(aggregatedPortkeyStats.avgTotalTime - aggregatedBedrockStats.avgTotalTime)} │`);
+      console.log(`│ Median Time         │ ${this.formatMs(aggregatedBedrockStats.medianTotalTime)} │ ${this.formatMs(aggregatedPortkeyStats.medianTotalTime)} │ ${this.formatDiffMs(aggregatedPortkeyStats.medianTotalTime - aggregatedBedrockStats.medianTotalTime)} │`);
+      console.log(`│ P95 Time            │ ${this.formatMs(aggregatedBedrockStats.p95TotalTime)} │ ${this.formatMs(aggregatedPortkeyStats.p95TotalTime)} │ ${this.formatDiffMs(aggregatedPortkeyStats.p95TotalTime - aggregatedBedrockStats.p95TotalTime)} │`);
+      console.log(`│ P99 Time            │ ${this.formatMs(aggregatedBedrockStats.p99TotalTime)} │ ${this.formatMs(aggregatedPortkeyStats.p99TotalTime)} │ ${this.formatDiffMs(aggregatedPortkeyStats.p99TotalTime - aggregatedBedrockStats.p99TotalTime)} │`);
+      console.log(`│ Success Rate        │ ${this.formatPct(aggregatedBedrockStats.successRate)} │ ${this.formatPct(aggregatedPortkeyStats.successRate)} │ ${this.formatDiffPct(aggregatedPortkeyStats.successRate - aggregatedBedrockStats.successRate)} │`);
+      console.log('└─────────────────────┴──────────────┴──────────────┴──────────────┘');
 
       const aggregatedOverhead = aggregatedPortkeyStats.avgTotalTime - aggregatedBedrockStats.avgTotalTime;
       const aggregatedOverheadPct = (aggregatedOverhead / aggregatedBedrockStats.avgTotalTime) * 100;
@@ -883,6 +868,11 @@ class PortkeyBenchmark {
       console.log(`• Aggregated average overhead: ${aggregatedOverhead.toFixed(2)}ms (${aggregatedOverheadPct.toFixed(2)}%)`);
       console.log(`• Aggregated median overhead: ${(aggregatedPortkeyStats.medianTotalTime - aggregatedBedrockStats.medianTotalTime).toFixed(2)}ms`);
       console.log(`• Overhead consistency (std dev): ${stdDev.toFixed(2)}ms`);
+      console.log('');
+      console.log('📍 WHAT THIS MEANS:');
+      console.log('   The overhead represents round-trip network latency:');
+      console.log('   Client → Portkey → Bedrock → Portkey → Client');
+      console.log('   This includes 2 extra network hops compared to direct Bedrock calls.');
     }
 
     // Save detailed report
@@ -982,46 +972,48 @@ class PortkeyBenchmark {
     if (mode === 'comparison') {
       // Comparison mode - show side-by-side comparison
       console.log('\n📈 PERFORMANCE COMPARISON:');
-      console.log('┌─────────────────────┬──────────────┬──────────────┬─────────────┐');
-      console.log('│ Metric              │ Bedrock      │ Portkey      │ Difference  │');
-      console.log('├─────────────────────┼──────────────┼──────────────┼─────────────┤');
-      console.log(`│ Avg Total Time      │ ${bedrockStats.avgTotalTime.toFixed(2)}ms      │ ${portkeyStats.avgTotalTime.toFixed(2)}ms      │ +${comparison.latencyOverhead.toFixed(2)}ms     │`);
-      console.log(`│ Avg Network Latency │ ${bedrockStats.avgNetworkLatency.toFixed(2)}ms      │ ${portkeyStats.avgNetworkLatency.toFixed(2)}ms      │ +${comparison.networkLatencyDiff.toFixed(2)}ms     │`);
-      console.log(`│ Success Rate        │ ${bedrockStats.successRate.toFixed(1)}%       │ ${portkeyStats.successRate.toFixed(1)}%       │ ${comparison.successRateDiff.toFixed(1)}%       │`);
-      console.log(`│ Median Time         │ ${bedrockStats.medianTotalTime.toFixed(2)}ms      │ ${portkeyStats.medianTotalTime.toFixed(2)}ms      │ +${(portkeyStats.medianTotalTime - bedrockStats.medianTotalTime).toFixed(2)}ms     │`);
-      console.log(`│ P95 Time            │ ${bedrockStats.p95TotalTime.toFixed(2)}ms      │ ${portkeyStats.p95TotalTime.toFixed(2)}ms      │ +${(portkeyStats.p95TotalTime - bedrockStats.p95TotalTime).toFixed(2)}ms     │`);
-      console.log(`│ P99 Time            │ ${bedrockStats.p99TotalTime.toFixed(2)}ms      │ ${portkeyStats.p99TotalTime.toFixed(2)}ms      │ +${(portkeyStats.p99TotalTime - bedrockStats.p99TotalTime).toFixed(2)}ms     │`);
-      console.log('└─────────────────────┴──────────────┴──────────────┴─────────────┘');
+      console.log('┌─────────────────────┬──────────────┬──────────────┬──────────────┐');
+      console.log('│ Metric              │ Bedrock      │ Portkey      │ Difference   │');
+      console.log('├─────────────────────┼──────────────┼──────────────┼──────────────┤');
+      console.log(`│ Avg Total Time      │ ${this.formatMs(bedrockStats.avgTotalTime)} │ ${this.formatMs(portkeyStats.avgTotalTime)} │ ${this.formatDiffMs(comparison.latencyOverhead)} │`);
+      console.log(`│ Median Time         │ ${this.formatMs(bedrockStats.medianTotalTime)} │ ${this.formatMs(portkeyStats.medianTotalTime)} │ ${this.formatDiffMs(portkeyStats.medianTotalTime - bedrockStats.medianTotalTime)} │`);
+      console.log(`│ P95 Time            │ ${this.formatMs(bedrockStats.p95TotalTime)} │ ${this.formatMs(portkeyStats.p95TotalTime)} │ ${this.formatDiffMs(portkeyStats.p95TotalTime - bedrockStats.p95TotalTime)} │`);
+      console.log(`│ P99 Time            │ ${this.formatMs(bedrockStats.p99TotalTime)} │ ${this.formatMs(portkeyStats.p99TotalTime)} │ ${this.formatDiffMs(portkeyStats.p99TotalTime - bedrockStats.p99TotalTime)} │`);
+      console.log(`│ Success Rate        │ ${this.formatPct(bedrockStats.successRate)} │ ${this.formatPct(portkeyStats.successRate)} │ ${this.formatDiffPct(comparison.successRateDiff)} │`);
+      console.log('└─────────────────────┴──────────────┴──────────────┴──────────────┘');
 
       console.log('\n🎯 KEY INSIGHTS:');
       console.log(`• Portkey adds an average of ${comparison.latencyOverhead.toFixed(2)}ms latency (${comparison.latencyOverheadPercentage.toFixed(1)}% increase)`);
-      console.log(`• Network latency difference: ${comparison.networkLatencyDiff.toFixed(2)}ms`);
+      console.log(`• Median overhead: ${(portkeyStats.medianTotalTime - bedrockStats.medianTotalTime).toFixed(2)}ms`);
       console.log(`• Success rate difference: ${comparison.successRateDiff.toFixed(1)}%`);
-
-      if (comparison.latencyOverhead > 0) {
-        console.log(`• Portkey proxy overhead: ${comparison.latencyOverhead.toFixed(2)}ms per request`);
-      }
+      console.log('');
+      console.log('📍 WHAT THIS MEANS:');
+      console.log('   The overhead represents round-trip network latency:');
+      console.log('   Client → Portkey → Bedrock → Portkey → Client');
+      console.log('   This includes 2 extra network hops compared to direct Bedrock calls.');
     } else {
       // Load test mode - show detailed Portkey stats
       const stats = portkeyStats;
       const providerName = 'Portkey';
 
+      // Helper for simple values
+      const formatVal = (val) => String(val).padStart(10);
+
       console.log(`\n📈 ${providerName.toUpperCase()} PERFORMANCE METRICS:`);
       console.log('┌─────────────────────┬──────────────┐');
       console.log('│ Metric              │ Value        │');
       console.log('├─────────────────────┼──────────────┤');
-      console.log(`│ Total Requests      │ ${stats.count}           │`);
-      console.log(`│ Successful          │ ${stats.successfulCount}           │`);
-      console.log(`│ Failed              │ ${stats.failedCount}           │`);
-      console.log(`│ Success Rate        │ ${stats.successRate.toFixed(1)}%       │`);
-      console.log(`│ Avg Total Time      │ ${stats.avgTotalTime.toFixed(2)}ms      │`);
-      console.log(`│ Avg Network Latency │ ${stats.avgNetworkLatency.toFixed(2)}ms      │`);
-      console.log(`│ Median Time         │ ${stats.medianTotalTime.toFixed(2)}ms      │`);
-      console.log(`│ P95 Time            │ ${stats.p95TotalTime.toFixed(2)}ms      │`);
-      console.log(`│ P99 Time            │ ${stats.p99TotalTime.toFixed(2)}ms      │`);
-      console.log(`│ Min Time            │ ${stats.minTotalTime.toFixed(2)}ms      │`);
-      console.log(`│ Max Time            │ ${stats.maxTotalTime.toFixed(2)}ms      │`);
-      console.log(`│ Avg Tokens/Request  │ ${stats.avgTokensPerRequest.toFixed(1)}        │`);
+      console.log(`│ Total Requests      │ ${formatVal(stats.count)} │`);
+      console.log(`│ Successful          │ ${formatVal(stats.successfulCount)} │`);
+      console.log(`│ Failed              │ ${formatVal(stats.failedCount)} │`);
+      console.log(`│ Success Rate        │ ${this.formatPct(stats.successRate)} │`);
+      console.log(`│ Avg Total Time      │ ${this.formatMs(stats.avgTotalTime)} │`);
+      console.log(`│ Median Time         │ ${this.formatMs(stats.medianTotalTime)} │`);
+      console.log(`│ P95 Time            │ ${this.formatMs(stats.p95TotalTime)} │`);
+      console.log(`│ P99 Time            │ ${this.formatMs(stats.p99TotalTime)} │`);
+      console.log(`│ Min Time            │ ${this.formatMs(stats.minTotalTime)} │`);
+      console.log(`│ Max Time            │ ${this.formatMs(stats.maxTotalTime)} │`);
+      console.log(`│ Avg Tokens/Request  │ ${formatVal(stats.avgTokensPerRequest.toFixed(1))} │`);
       console.log('└─────────────────────┴──────────────┘');
 
       console.log('\n🎯 KEY INSIGHTS:');
@@ -1029,10 +1021,6 @@ class PortkeyBenchmark {
       console.log(`• Success rate: ${stats.successRate.toFixed(1)}%`);
       console.log(`• 95% of requests completed in: ${stats.p95TotalTime.toFixed(2)}ms or less`);
       console.log(`• Average tokens per request: ${stats.avgTokensPerRequest.toFixed(1)}`);
-
-      if (stats.avgNetworkLatency > 0) {
-        console.log(`• Average network latency: ${stats.avgNetworkLatency.toFixed(2)}ms`);
-      }
     }
 
     console.log('\n💾 Detailed results saved to: benchmark_results.json');
