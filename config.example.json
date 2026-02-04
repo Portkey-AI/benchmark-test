@@ -1,0 +1,17 @@
+{
+  "mode": "comparison",
+  "prompt": "What is the capital of France?",
+  "maxTokens": 100,
+  "temperature": 0.7,
+  "concurrency": 2,
+  "maxRequests": 30,
+  "testDuration": 60,
+  "iterations": 10,
+  "bedrockModelId": "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+  "amazonRegion": "us-east-1",
+  "bedrockBearerToken": "...",
+  "portkeyApiKey": "...",
+  "portkeyBaseURL": "https://api.portkey.ai/v1",
+  "portkeyProviderSlug": "@bedrock-prod",
+  "model": "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+}

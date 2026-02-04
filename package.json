@@ -1,0 +1,14 @@
+{
+    "name": "portkey-benchmark",
+    "version": "1.0.0",
+    "description": "Benchmark tool for comparing Portkey and Bedrock latency",
+    "type": "module",
+    "scripts": {
+        "start": "node benchmark.js",
+        "benchmark": "node benchmark.js config.json"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "dependencies": {}
+}
