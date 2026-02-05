@@ -61,9 +61,10 @@ function createAwsSigV4Headers(method, url, body, credentials, region, service) 
 
 
   const now = new Date();
-  // Format: 20260204T163400Z (removes dashes, colons, and milliseconds)
+  // Format: 20260204T163400Z (safe handling of milliseconds)
   const isoDate = now.toISOString();
-  const amzDate = isoDate.replace(/-/g, '').replace(/:/g, '').replace(/\.\d{3}Z$/, 'Z');
+  // Take everything before the dot (seconds) and append Z, then strip dashes and colons
+  const amzDate = isoDate.split('.')[0].replace(/[-:]/g, '') + 'Z';
   const dateStamp = amzDate.substring(0, 8);
 
   // Create canonical request
