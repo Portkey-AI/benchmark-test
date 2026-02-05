@@ -19,19 +19,57 @@ function getSignatureKey(secretKey, dateStamp, region, service) {
   return kSigning;
 }
 
+// URL encode path segment according to AWS SigV4 rules
+// Unreserved characters (A-Z, a-z, 0-9, hyphen, underscore, period, tilde) are not encoded
+// Everything else including colon must be percent-encoded
+function uriEncodePathSegment(segment) {
+  let encoded = '';
+  for (const char of segment) {
+    if (
+      (char >= 'A' && char <= 'Z') ||
+      (char >= 'a' && char <= 'z') ||
+      (char >= '0' && char <= '9') ||
+      char === '-' ||
+      char === '_' ||
+      char === '.' ||
+      char === '~'
+    ) {
+      encoded += char;
+    } else {
+      // Percent-encode the character
+      const bytes = Buffer.from(char, 'utf8');
+      for (const byte of bytes) {
+        encoded += '%' + byte.toString(16).toUpperCase().padStart(2, '0');
+      }
+    }
+  }
+  return encoded;
+}
+
+// Encode entire path (preserving /)
+function uriEncodePath(path) {
+  return path.split('/').map(uriEncodePathSegment).join('/');
+}
+
 function createAwsSigV4Headers(method, url, body, credentials, region, service) {
   const { accessKeyId, secretAccessKey, sessionToken } = credentials;
   const parsedUrl = new URL(url);
   const host = parsedUrl.host;
-  const path = parsedUrl.pathname;
+
+  // URL encode the path for canonical request - important for model IDs with colons
+  const canonicalPath = uriEncodePath(parsedUrl.pathname);
+
 
   const now = new Date();
-  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  // Format: 20260204T163400Z (removes dashes, colons, and milliseconds)
+  const isoDate = now.toISOString();
+  const amzDate = isoDate.replace(/-/g, '').replace(/:/g, '').replace(/\.\d{3}Z$/, 'Z');
   const dateStamp = amzDate.substring(0, 8);
 
   // Create canonical request
   const payloadHash = sha256(body);
 
+  // Headers must be in alphabetical order
   let signedHeaders = 'content-type;host;x-amz-date';
   let canonicalHeaders = `content-type:application/json\nhost:${host}\nx-amz-date:${amzDate}\n`;
 
@@ -42,8 +80,8 @@ function createAwsSigV4Headers(method, url, body, credentials, region, service) 
 
   const canonicalRequest = [
     method,
-    path,
-    '', // query string
+    canonicalPath,
+    '', // query string (empty for POST)
     canonicalHeaders,
     signedHeaders,
     payloadHash
@@ -68,6 +106,7 @@ function createAwsSigV4Headers(method, url, body, credentials, region, service) 
 
   const headers = {
     'Content-Type': 'application/json',
+    'Host': host,
     'X-Amz-Date': amzDate,
     'Authorization': authorization
   };
@@ -180,11 +219,17 @@ class PortkeyBenchmark {
         throw new Error('No Bedrock authentication configured. Provide either awsAccessKeyId + awsSecretAccessKey, or bedrockBearerToken.');
       }
 
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers,
-        body: bodyString
-      });
+      let response;
+      try {
+        response = await fetch(endpoint, {
+          method: 'POST',
+          headers,
+          body: bodyString
+        });
+      } catch (fetchError) {
+        // Network-level error (DNS, connection refused, TLS, etc.)
+        throw new Error(`Network error connecting to Bedrock: ${fetchError.message}. Endpoint: ${endpoint}`);
+      }
 
       const endTime = Date.now();
       const totalTime = endTime - startTime;
@@ -479,6 +524,9 @@ class PortkeyBenchmark {
             'bedrock'
           );
           console.log('   Using AWS Access Key authentication (SigV4)');
+          console.log(`   Access Key ID: ${this.config.awsAccessKeyId.substring(0, 8)}...`);
+          console.log(`   Region: ${this.config.amazonRegion}`);
+          console.log(`   Endpoint: ${endpoint}`);
         } else if (this.config.bedrockBearerToken) {
           // Use Bearer token authentication
           headers = {
@@ -490,11 +538,21 @@ class PortkeyBenchmark {
           throw new Error('No Bedrock authentication configured. Provide either awsAccessKeyId + awsSecretAccessKey, or bedrockBearerToken.');
         }
 
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers,
-          body: bodyString
-        });
+        let response;
+        try {
+          console.log('   Sending request...');
+          response = await fetch(endpoint, {
+            method: 'POST',
+            headers,
+            body: bodyString
+          });
+          console.log(`   Response received: HTTP ${response.status}`);
+        } catch (fetchError) {
+          console.log(`   ❌ Fetch failed with error type: ${fetchError.constructor.name}`);
+          console.log(`   Error code: ${fetchError.code || 'N/A'}`);
+          console.log(`   Error cause: ${fetchError.cause ? JSON.stringify(fetchError.cause) : 'N/A'}`);
+          throw new Error(`Network error: ${fetchError.message}. Endpoint: ${endpoint}`);
+        }
 
         const totalTime = Date.now() - startTime;
 
