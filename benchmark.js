@@ -1,6 +1,41 @@
 import fs from 'fs';
 import crypto from 'crypto';
-// Using direct HTTP requests (fetch) for all providers
+import https from 'https';
+
+// --- CUSTOM FETCH IMPLEMENTATION TO HANDLE SELF-SIGNED CERTS ---
+// This wrapper handles the "SELF_SIGNED_CERT_IN_CHAIN" error common in corporate networks
+const createCustomFetch = (config) => {
+  // If strictSSL is explicitly false, we create a custom dispatcher/agent
+  if (config.strictSSL === false) {
+    console.log('⚠️  SSL Verification Disabled (strictSSL: false)');
+
+    // For Node 18+ native fetch, we need to handle this differently than node-fetch
+    // We try to use the global dispatcher if available (undici) or fallback to process env
+
+    // Option A: Set process-level env var (Zero dependency fallback)
+    // This is the most reliable way without importing 'undici' explicitly
+    const originalRejectUnauthorized = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+
+    // Return a wrapped fetch
+    return async (url, options) => {
+      // Temporarily disable TLS rejection for this request if not already set globally
+      if (process.env.NODE_TLS_REJECT_UNAUTHORIZED !== '0') {
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+      }
+
+      try {
+        return await fetch(url, options);
+      } finally {
+        // We generally leave it disabled for the process lifetime in this benchmark context
+        // as toggling it can be race-condition prone in async code
+      }
+    };
+  }
+
+  // Default: use native fetch as is
+  return fetch;
+};
+// ----------------------------------------------------------------
 
 // AWS Signature V4 signing helpers
 function hmac(key, data, encoding) {
@@ -123,6 +158,7 @@ function createAwsSigV4Headers(method, url, body, credentials, region, service) 
 class PortkeyBenchmark {
   constructor(config) {
     this.config = config;
+    this.fetch = createCustomFetch(config);
     this.results = {
       bedrock: [],
       portkey: []
@@ -222,7 +258,7 @@ class PortkeyBenchmark {
 
       let response;
       try {
-        response = await fetch(endpoint, {
+        response = await this.fetch(endpoint, {
           method: 'POST',
           headers,
           body: bodyString
@@ -297,7 +333,7 @@ class PortkeyBenchmark {
 
       const endpoint = `${this.portkeyBaseURL}/chat/completions`;
 
-      const response = await fetch(endpoint, {
+      const response = await this.fetch(endpoint, {
         method: 'POST',
         headers: this.portkeyHeaders,
         body: JSON.stringify(requestBody)
@@ -542,7 +578,7 @@ class PortkeyBenchmark {
         let response;
         try {
           console.log('   Sending request...');
-          response = await fetch(endpoint, {
+          response = await this.fetch(endpoint, {
             method: 'POST',
             headers,
             body: bodyString

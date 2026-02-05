@@ -206,6 +206,7 @@ To use a different model, update `bedrockModelId` and `model` in `config.json`:
 | `amazonRegion` | Both modes | AWS region (e.g., `us-east-1`) |
 | `bedrockModelId` | Both modes | Model ID for Bedrock |
 | `portkeyProviderSlug` | Both modes | Provider slug (e.g., `@bedrock-prod`) |
+| `strictSSL` | Both modes (Optional) | Set `false` to bypass SSL verification (fix proxy errors) |
 
 > **Note**: For Bedrock authentication, use either Option 1 (Access Keys) OR Option 2 (Bearer Token), not both.
 
@@ -278,6 +279,28 @@ benchmark-test/
 ├── config.json          # Your configuration (gitignored)
 ├── results/             # Output directory (gitignored)
 └── README.md
+```
+
+
+---
+
+## Troubleshooting
+
+### "SELF_SIGNED_CERT_IN_CHAIN" Error
+If you see this error (or `fetch failed`), you are likely behind a corporate firewall/proxy (like Zscaler, Netskope) that performs SSL inspection. 
+
+To fix this:
+1. Open your `config.json`.
+2. Add `"strictSSL": false` to the top level JSON object.
+3. Run the benchmark again.
+
+**Example:**
+```json
+{
+  "mode": "comparison",
+  "strictSSL": false,
+  ...
+}
 ```
 
 ---
