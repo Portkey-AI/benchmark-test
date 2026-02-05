@@ -18,7 +18,7 @@
 ### Prerequisites
 
 - **Node.js 18+** (uses native `fetch`, zero npm dependencies)
-- AWS Bedrock access (Bearer token)
+- AWS Bedrock access (Access Keys or Bearer token)
 - Portkey API key
 
 ### Step 1: Clone & Setup
@@ -36,27 +36,61 @@ Open `config.json` and edit these fields:
 ```json
 {
   "amazonRegion": "us-east-1",
-  "bedrockBearerToken": "...",
   "portkeyApiKey": "...",
   "portkeyProviderSlug": "@your-bedrock-slug"
 }
 ```
 
-<details>
-<summary><strong>AWS Bedrock Bearer Token</strong></summary>
+Then choose **one** of the two Bedrock authentication methods below:
 
-This tool uses HTTP Bearer auth (not IAM access keys).
+<details>
+<summary><strong>Option 1: AWS Access Keys (Recommended)</strong></summary>
+
+Use IAM credentials directly. Best for programmatic access and automation.
+
+```json
+{
+  "awsAccessKeyId": "AKIA...",
+  "awsSecretAccessKey": "...",
+  "awsSessionToken": ""
+}
+```
+
+**Getting Access Keys:**
+
+1. **IAM User credentials**: Create from IAM Console → Users → Security credentials
+2. **AWS CLI**: Run `aws configure` to set up credentials, then export them:
+   ```bash
+   # If using environment variables
+   export AWS_ACCESS_KEY_ID="your-key"
+   export AWS_SECRET_ACCESS_KEY="your-secret"
+   ```
+3. **Temporary credentials with STS**:
+   ```bash
+   aws sts get-session-token --duration-seconds 3600
+   ```
+   Copy `AccessKeyId`, `SecretAccessKey`, and `SessionToken` from the output.
+
+> **Note**: `awsSessionToken` is optional. Only required when using temporary credentials (e.g., from `sts get-session-token` or assumed roles).
+
+</details>
+
+<details>
+<summary><strong>Option 2: Bearer Token</strong></summary>
+
+Use HTTP Bearer auth. Best for quick testing with AWS SSO.
+
+```json
+{
+  "bedrockBearerToken": "..."
+}
+```
 
 **From AWS SSO Portal:**
 1. Log into your organization's AWS SSO
 2. Select your Bedrock-enabled account
 3. Choose "Command line or programmatic access"
 4. Copy the Bearer token
-
-**From AWS CLI:**
-```bash
-aws sts get-session-token --duration-seconds 3600
-```
 
 > Set `amazonRegion` to match where your Bedrock model is deployed (e.g., `us-east-1`, `us-west-2`)
 
@@ -164,13 +198,19 @@ To use a different model, update `bedrockModelId` and `model` in `config.json`:
 
 | Credential | Required For | Description |
 |------------|--------------|-------------|
-| `bedrockBearerToken` | `comparison` mode | AWS Bearer token with Bedrock invoke permissions |
+| `awsAccessKeyId` | `comparison` mode (Option 1) | AWS Access Key ID (IAM credentials) |
+| `awsSecretAccessKey` | `comparison` mode (Option 1) | AWS Secret Access Key |
+| `awsSessionToken` | `comparison` mode (Optional) | Session token (only for temporary credentials) |
+| `bedrockBearerToken` | `comparison` mode (Option 2) | AWS Bearer token with Bedrock invoke permissions |
 | `portkeyApiKey` | Both modes | Your Portkey API key |
 | `amazonRegion` | Both modes | AWS region (e.g., `us-east-1`) |
 | `bedrockModelId` | Both modes | Model ID for Bedrock |
 | `portkeyProviderSlug` | Both modes | Provider slug (e.g., `@bedrock-prod`) |
 
+> **Note**: For Bedrock authentication, use either Option 1 (Access Keys) OR Option 2 (Bearer Token), not both.
+
 </details>
+
 
 ---
 

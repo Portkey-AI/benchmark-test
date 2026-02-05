@@ -1,5 +1,84 @@
 import fs from 'fs';
+import crypto from 'crypto';
 // Using direct HTTP requests (fetch) for all providers
+
+// AWS Signature V4 signing helpers
+function hmac(key, data, encoding) {
+  return crypto.createHmac('sha256', key).update(data).digest(encoding);
+}
+
+function sha256(data, encoding = 'hex') {
+  return crypto.createHash('sha256').update(data).digest(encoding);
+}
+
+function getSignatureKey(secretKey, dateStamp, region, service) {
+  const kDate = hmac('AWS4' + secretKey, dateStamp);
+  const kRegion = hmac(kDate, region);
+  const kService = hmac(kRegion, service);
+  const kSigning = hmac(kService, 'aws4_request');
+  return kSigning;
+}
+
+function createAwsSigV4Headers(method, url, body, credentials, region, service) {
+  const { accessKeyId, secretAccessKey, sessionToken } = credentials;
+  const parsedUrl = new URL(url);
+  const host = parsedUrl.host;
+  const path = parsedUrl.pathname;
+
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  const dateStamp = amzDate.substring(0, 8);
+
+  // Create canonical request
+  const payloadHash = sha256(body);
+
+  let signedHeaders = 'content-type;host;x-amz-date';
+  let canonicalHeaders = `content-type:application/json\nhost:${host}\nx-amz-date:${amzDate}\n`;
+
+  if (sessionToken) {
+    signedHeaders = 'content-type;host;x-amz-date;x-amz-security-token';
+    canonicalHeaders = `content-type:application/json\nhost:${host}\nx-amz-date:${amzDate}\nx-amz-security-token:${sessionToken}\n`;
+  }
+
+  const canonicalRequest = [
+    method,
+    path,
+    '', // query string
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash
+  ].join('\n');
+
+  // Create string to sign
+  const algorithm = 'AWS4-HMAC-SHA256';
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const stringToSign = [
+    algorithm,
+    amzDate,
+    credentialScope,
+    sha256(canonicalRequest)
+  ].join('\n');
+
+  // Calculate signature
+  const signingKey = getSignatureKey(secretAccessKey, dateStamp, region, service);
+  const signature = hmac(signingKey, stringToSign, 'hex');
+
+  // Create authorization header
+  const authorization = `${algorithm} Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Amz-Date': amzDate,
+    'Authorization': authorization
+  };
+
+  if (sessionToken) {
+    headers['X-Amz-Security-Token'] = sessionToken;
+  }
+
+  return headers;
+}
+
 
 class PortkeyBenchmark {
   constructor(config) {
@@ -73,14 +152,38 @@ class PortkeyBenchmark {
       };
 
       const endpoint = `https://bedrock-runtime.${this.config.amazonRegion}.amazonaws.com/model/${this.config.bedrockModelId}/invoke`;
+      const bodyString = JSON.stringify(requestBody);
+
+      // Determine authentication method: Access Key (SigV4) vs Bearer Token
+      let headers;
+      if (this.config.awsAccessKeyId && this.config.awsSecretAccessKey) {
+        // Use AWS Signature V4 signing
+        headers = createAwsSigV4Headers(
+          'POST',
+          endpoint,
+          bodyString,
+          {
+            accessKeyId: this.config.awsAccessKeyId,
+            secretAccessKey: this.config.awsSecretAccessKey,
+            sessionToken: this.config.awsSessionToken // Optional
+          },
+          this.config.amazonRegion,
+          'bedrock'
+        );
+      } else if (this.config.bedrockBearerToken) {
+        // Use Bearer token authentication
+        headers = {
+          'Authorization': `Bearer ${this.config.bedrockBearerToken}`,
+          'Content-Type': 'application/json'
+        };
+      } else {
+        throw new Error('No Bedrock authentication configured. Provide either awsAccessKeyId + awsSecretAccessKey, or bedrockBearerToken.');
+      }
 
       const response = await fetch(endpoint, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.config.bedrockBearerToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(requestBody)
+        headers,
+        body: bodyString
       });
 
       const endTime = Date.now();
@@ -348,21 +451,49 @@ class PortkeyBenchmark {
         // Use exact same format as working bedrock-test.js
         const content = typeof testPrompt === 'string' ? testPrompt : testPrompt[testPrompt.length - 1].content;
 
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
+        const requestBody = {
+          anthropic_version: "bedrock-2023-05-31",
+          max_tokens: 100,
+          messages: [{
+            role: "user",
+            content: [{ type: "text", text: content }]
+          }],
+          temperature: 0.7
+        };
+        const bodyString = JSON.stringify(requestBody);
+
+        // Determine authentication method: Access Key (SigV4) vs Bearer Token
+        let headers;
+        if (this.config.awsAccessKeyId && this.config.awsSecretAccessKey) {
+          // Use AWS Signature V4 signing
+          headers = createAwsSigV4Headers(
+            'POST',
+            endpoint,
+            bodyString,
+            {
+              accessKeyId: this.config.awsAccessKeyId,
+              secretAccessKey: this.config.awsSecretAccessKey,
+              sessionToken: this.config.awsSessionToken // Optional
+            },
+            this.config.amazonRegion,
+            'bedrock'
+          );
+          console.log('   Using AWS Access Key authentication (SigV4)');
+        } else if (this.config.bedrockBearerToken) {
+          // Use Bearer token authentication
+          headers = {
             'Authorization': `Bearer ${this.config.bedrockBearerToken}`,
             'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            anthropic_version: "bedrock-2023-05-31",
-            max_tokens: 100,
-            messages: [{
-              role: "user",
-              content: [{ type: "text", text: content }]
-            }],
-            temperature: 0.7
-          })
+          };
+          console.log('   Using Bearer token authentication');
+        } else {
+          throw new Error('No Bedrock authentication configured. Provide either awsAccessKeyId + awsSecretAccessKey, or bedrockBearerToken.');
+        }
+
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers,
+          body: bodyString
         });
 
         const totalTime = Date.now() - startTime;
